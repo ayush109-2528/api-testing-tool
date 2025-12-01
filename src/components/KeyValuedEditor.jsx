@@ -1,60 +1,60 @@
 export default function KeyValueEditor({ list, setList, renderValueInput }) {
   const updateKeyValue = (index, key, value) => {
-    const newList = [...list];
-    newList[index][key] = value;
-    setList(newList);
+    const next = [...list];
+    next[index][key] = value;
+    setList(next);
   };
 
-  const addKeyValue = () => setList([...list, { key: '', value: '' }]);
+  const addRow = () => setList([...list, { key: '', value: '' }]);
 
-  const removeKeyValue = (index) => {
-    const newList = [...list];
-    newList.splice(index, 1);
-    // Keep at least one empty row
-    setList(newList.length > 0 ? newList : [{ key: '', value: '' }]);
+  const removeRow = (index) => {
+    const next = [...list];
+    next.splice(index, 1);
+    setList(next.length ? next : [{ key: '', value: '' }]);
   };
 
   return (
-    <>
+    <div className="space-y-1">
       {list.map((item, i) => (
-        <div key={i} className="flex gap-2 mb-1 items-center">
+        <div key={i} className="flex items-center gap-2">
           <input
             type="text"
             placeholder="Key"
-            className="flex-1 bg-gray-800 rounded border border-gray-600 p-1 text-white placeholder-gray-400"
+            className="flex-1 rounded-md bg-slate-900/80 border border-slate-700 px-2 py-1 text-xs text-slate-50
+                       placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
             value={item.key}
             onChange={(e) => updateKeyValue(i, 'key', e.target.value)}
           />
           {renderValueInput ? (
-            renderValueInput(item, i, updateKeyValue, removeKeyValue)
+            renderValueInput(item, i, updateKeyValue, removeRow)
           ) : (
             <>
               <input
                 type="text"
                 placeholder="Value"
-                className="flex-1 bg-gray-800 rounded border border-gray-600 p-1 text-white placeholder-gray-400"
+                className="flex-1 rounded-md bg-slate-900/80 border border-slate-700 px-2 py-1 text-xs text-slate-50
+                           placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
                 value={item.value}
                 onChange={(e) => updateKeyValue(i, 'value', e.target.value)}
               />
               <button
-                className="text-red-500"
-                onClick={() => removeKeyValue(i)}
                 type="button"
-                aria-label="Remove row"
+                onClick={() => removeRow(i)}
+                className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-rose-900/40 hover:text-rose-200 transition-colors"
               >
-                ×
+                ✕
               </button>
             </>
           )}
         </div>
       ))}
       <button
-        className="text-xs text-indigo-400 hover:underline"
-        onClick={addKeyValue}
         type="button"
+        onClick={addRow}
+        className="mt-1 text-[11px] font-medium text-sky-400 hover:text-sky-300 transition-colors"
       >
-        + Add
+        + Add row
       </button>
-    </>
+    </div>
   );
 }
