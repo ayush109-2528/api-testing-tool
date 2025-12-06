@@ -20,8 +20,7 @@ export default function KeyValueEditor({ list, setList, renderValueInput }) {
           <input
             type="text"
             placeholder="Key"
-            className="flex-1 rounded-md bg-slate-900/80 border border-slate-700 px-2 py-1 text-xs text-slate-50
-                       placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+            className="flex-1 rounded-md bg-slate-900/80 border border-slate-700 px-2 py-1 text-xs text-slate-50 placeholder:text-slate-500"
             value={item.key}
             onChange={(e) => updateKeyValue(i, 'key', e.target.value)}
           />
@@ -32,27 +31,18 @@ export default function KeyValueEditor({ list, setList, renderValueInput }) {
               <input
                 type="text"
                 placeholder="Value"
-                className="flex-1 rounded-md bg-slate-900/80 border border-slate-700 px-2 py-1 text-xs text-slate-50
-                           placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                className="flex-1 rounded-md bg-slate-900/80 border border-slate-700 px-2 py-1 text-xs text-slate-50 placeholder:text-slate-500"
                 value={item.value}
                 onChange={(e) => updateKeyValue(i, 'value', e.target.value)}
               />
-              <button
-                type="button"
-                onClick={() => removeRow(i)}
-                className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-rose-900/40 hover:text-rose-200 transition-colors"
-              >
+              <button type="button" onClick={() => removeRow(i)} className="rounded-md px-2 py-1 text-xs text-rose-400 hover:bg-rose-900/40">
                 ✕
               </button>
             </>
           )}
         </div>
       ))}
-      <button
-        type="button"
-        onClick={addRow}
-        className="mt-1 text-[11px] font-medium text-sky-400 hover:text-sky-300 transition-colors"
-      >
+      <button type="button" onClick={addRow} className="mt-1 text-[11px] font-medium text-sky-400 hover:text-sky-300">
         + Add row
       </button>
     </div>

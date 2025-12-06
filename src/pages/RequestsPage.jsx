@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
-import CollectionsPanel from '../components/CollectionsPanel';
+import { useState, useEffect } from 'react';
 import KeyValueEditor from '../components/KeyValuedEditor';
+import CollectionsPanel from '../components/CollectionsPanel';
 import { replaceEnvVars } from '../utils/envUtils';
 import { runTests } from '../utils/testRunner';
 
@@ -9,11 +8,12 @@ const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 const BODY_TYPES = ['none', 'raw', 'form-data', 'x-www-form-urlencoded'];
 const AUTH_TYPES = ['none', 'bearer', 'basic'];
 
-export default function RequestsPage() {
+export default function RequestsPage({ session }) {
+  const BACKEND_URL = 'https://api-testing-tool-backend-d23x.vercel.app';
+  const userId = session?.user?.id || null;
   const [savedRequests, setSavedRequests] = useState([]);
   const [activeRequestId, setActiveRequestId] = useState(null);
   const [saveName, setSaveName] = useState('');
-
   const [method, setMethod] = useState('GET');
   const [url, setUrl] = useState('');
   const [queryParams, setQueryParams] = useState([{ key: '', value: '' }]);
@@ -36,15 +36,22 @@ export default function RequestsPage() {
   const [testResults, setTestResults] = useState([]);
 
   useEffect(() => {
-    loadSavedRequests();
-  }, []);
+    if (userId) loadSavedRequests();
+  }, [userId]);
 
   const loadSavedRequests = async () => {
-    const { data, error } = await supabase
-      .from('api_requests')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (!error) setSavedRequests(data || []);
+    if (!userId) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/requests`, {
+        headers: { 'x-user-id': userId },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSavedRequests(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to load requests:', err);
+    }
   };
 
   const handleLoadRequest = (req) => {
@@ -53,7 +60,7 @@ export default function RequestsPage() {
     setMethod(req.method || 'GET');
     setUrl(req.url || '');
     setQueryParams(
-      req.query_params
+      req.query_params && Object.keys(req.query_params).length
         ? Object.entries(req.query_params).map(([k, v]) => ({ key: k, value: v }))
         : [{ key: '', value: '' }]
     );
@@ -62,7 +69,7 @@ export default function RequestsPage() {
     setAuthBasicUser(req.auth_basic_user || '');
     setAuthBasicPass(req.auth_basic_pass || '');
     setHeaders(
-      req.headers
+      req.headers && Object.keys(req.headers).length
         ? Object.entries(req.headers).map(([k, v]) => ({ key: k, value: v }))
         : [{ key: '', value: '' }]
     );
@@ -79,7 +86,7 @@ export default function RequestsPage() {
     setPreScript(req.pre_script || '// Pre-request script\n');
     setPostScript(req.post_script || '// Post-request script\n');
     setEnvVars(
-      req.env_vars
+      req.env_vars && Object.keys(req.env_vars).length
         ? Object.entries(req.env_vars).map(([k, v]) => ({ key: k, value: v }))
         : [{ key: '', value: '' }]
     );
@@ -88,50 +95,82 @@ export default function RequestsPage() {
     setTestResults([]);
   };
 
-  const handleDeleteRequest = async (id) => {
-    await supabase.from('api_requests').delete().eq('id', id);
-    if (id === activeRequestId) setActiveRequestId(null);
-    loadSavedRequests();
-  };
-
   const handleSave = async () => {
-    if (!saveName.trim()) return alert('Enter a name');
+    if (!session) {
+      alert('Please sign in to save requests.');
+      return;
+    }
+    if (!saveName.trim()) {
+      alert('Enter a request name');
+      return;
+    }
+
     const payload = {
-      name: saveName,
+      name: saveName.trim(),
       method,
       url,
-      headers: headers.reduce(
-        (acc, { key, value }) => (key.trim() ? { ...acc, [key]: value } : acc),
-        {}
-      ),
-      query_params: queryParams.reduce(
-        (acc, { key, value }) => (key.trim() ? { ...acc, [key]: value } : acc),
-        {}
-      ),
+      headers: headers.reduce((acc, { key, value }) => (key.trim() ? { ...acc, [key]: value } : acc), {}),
+      query_params: queryParams.reduce((acc, { key, value }) => (key.trim() ? { ...acc, [key]: value } : acc), {}),
       auth_type: authType,
       auth_token: authToken,
       auth_basic_user: authBasicUser,
       auth_basic_pass: authBasicPass,
       body_type: bodyType,
       raw_body: rawBody,
-      form_data: formData
-        .filter((row) => row.key.trim())
-        .map(({ key, value }) => ({ key, value })),
-      url_encoded_data: urlEncodedData.filter((row) => row.key.trim()),
+      form_data: formData.filter((kv) => kv.key.trim()).map(({ key, value }) => ({ key, value })),
+      url_encoded_data: urlEncodedData.filter((kv) => kv.key.trim()),
       pre_script: preScript,
       post_script: postScript,
-      env_vars: envVars.reduce(
-        (acc, { key, value }) => (key.trim() ? { ...acc, [key]: value } : acc),
-        {}
-      ),
+      env_vars: envVars.reduce((acc, { key, value }) => (key.trim() ? { ...acc, [key]: value } : acc), {}),
     };
 
-    if (activeRequestId) {
-      await supabase.from('api_requests').update(payload).eq('id', activeRequestId);
-    } else {
-      await supabase.from('api_requests').insert(payload);
+    try {
+      let res;
+      if (activeRequestId) {
+        res = await fetch(`${BACKEND_URL}/requests/${activeRequestId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': userId,
+          },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await fetch(`${BACKEND_URL}/requests`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': userId,
+          },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (res.ok) {
+        loadSavedRequests();
+        alert('Request saved!');
+      } else {
+        const err = await res.json();
+        alert('Save failed: ' + err.error);
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      alert('Save failed');
     }
-    loadSavedRequests();
+  };
+
+  const handleDeleteRequest = async (id) => {
+    if (!window.confirm('Delete this request?')) return;
+    try {
+      await fetch(`${BACKEND_URL}/requests/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-user-id': userId },
+      });
+      if (id === activeRequestId) setActiveRequestId(null);
+      loadSavedRequests();
+    } catch (err) {
+      console.error('Delete error:', err);
+    }
   };
 
   const sendRequest = async () => {
@@ -162,12 +201,7 @@ export default function RequestsPage() {
       hdrs['Authorization'] = 'Bearer ' + replaceEnvVars(authToken.trim(), envVars);
     } else if (authType === 'basic' && authBasicUser.trim()) {
       hdrs['Authorization'] =
-        'Basic ' +
-        btoa(
-          replaceEnvVars(authBasicUser, envVars) +
-            ':' +
-            replaceEnvVars(authBasicPass, envVars)
-        );
+        'Basic ' + btoa(replaceEnvVars(authBasicUser, envVars) + ':' + replaceEnvVars(authBasicPass, envVars));
     }
 
     let bodyData = null;
@@ -200,12 +234,10 @@ export default function RequestsPage() {
       const end = performance.now();
 
       const text = await res.text();
-      let json;
+      let json = null;
       try {
         json = JSON.parse(text);
-      } catch {
-        json = null;
-      }
+      } catch {}
 
       const respObj = {
         status: res.status,
@@ -237,6 +269,7 @@ export default function RequestsPage() {
       />
       <input
         type="file"
+        className="text-xs text-slate-400"
         onChange={(e) => {
           const file = e.target.files[0] || null;
           update(i, 'file', file);
@@ -244,19 +277,11 @@ export default function RequestsPage() {
         }}
       />
       {item.file && (
-        <button
-          type="button"
-          onClick={() => update(i, 'file', null)}
-          className="ml-1 rounded px-2 py-1 text-[10px] text-rose-400 hover:bg-rose-900/50"
-        >
+        <button type="button" onClick={() => update(i, 'file', null)} className="ml-1 text-rose-400 hover:text-rose-300">
           ×
         </button>
       )}
-      <button
-        type="button"
-        onClick={() => remove(i)}
-        className="ml-1 rounded px-2 py-1 text-[10px] text-rose-400 hover:bg-rose-900/50"
-      >
+      <button type="button" onClick={() => remove(i)} className="ml-1 text-rose-400 hover:text-rose-300">
         ×
       </button>
     </>
@@ -269,10 +294,12 @@ export default function RequestsPage() {
         onLoad={handleLoadRequest}
         activeId={activeRequestId}
         onDelete={handleDeleteRequest}
+        session={session}
       />
 
       <div className="flex flex-1 flex-col gap-4">
-        <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/60">
+        {/* URL Bar */}
+        <section className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg">
           <div className="flex flex-wrap items-center gap-2">
             <select
               className="rounded-md bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-slate-100"
@@ -280,9 +307,7 @@ export default function RequestsPage() {
               onChange={(e) => setMethod(e.target.value)}
             >
               {HTTP_METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
+                <option key={m} value={m}>{m}</option>
               ))}
             </select>
             <input
@@ -296,9 +321,7 @@ export default function RequestsPage() {
               onClick={sendRequest}
               disabled={!url || loadingReq}
               className="rounded-md bg-gradient-to-r from-emerald-500 to-sky-500 px-4 py-1.5 text-xs font-semibold text-slate-950
-                         shadow-md shadow-emerald-500/40 hover:brightness-110 active:scale-[0.98]
-                         focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:ring-offset-slate-900
-                         disabled:opacity-60"
+                         shadow-md shadow-emerald-500/40 hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
             >
               {loadingReq ? 'Sending…' : 'Send'}
             </button>
@@ -306,35 +329,30 @@ export default function RequestsPage() {
 
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <div>
-              <p className="mb-1 text-[11px] font-semibold text-slate-300">
-                Environment variables
-              </p>
+              <p className="mb-1 text-[11px] font-semibold text-slate-300">Environment Variables</p>
               <KeyValueEditor list={envVars} setList={setEnvVars} />
             </div>
             <div>
-              <p className="mb-1 text-[11px] font-semibold text-slate-300">
-                Query parameters
-              </p>
+              <p className="mb-1 text-[11px] font-semibold text-slate-300">Query Parameters</p>
               <KeyValueEditor list={queryParams} setList={setQueryParams} />
             </div>
           </div>
         </section>
 
+        {/* Request Editor + Response */}
         <section className="grid gap-4 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1.4fr)]">
-          <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/60">
+          {/* Left: Request Editor */}
+          <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg">
+            {/* Auth */}
             <div>
-              <p className="mb-1 text-[11px] font-semibold text-slate-300">
-                Authorization
-              </p>
+              <p className="mb-1 text-[11px] font-semibold text-slate-300">Authorization</p>
               <select
                 className="w-full rounded-md bg-slate-950 border border-slate-700 px-2 py-1.5 text-xs text-slate-100"
                 value={authType}
                 onChange={(e) => setAuthType(e.target.value)}
               >
                 {AUTH_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
+                  <option key={t} value={t}>{t}</option>
                 ))}
               </select>
               {authType === 'bearer' && (
@@ -364,27 +382,23 @@ export default function RequestsPage() {
               )}
             </div>
 
+            {/* Headers */}
             <div>
-              <p className="mb-1 text-[11px] font-semibold text-slate-300">
-                Headers
-              </p>
+              <p className="mb-1 text-[11px] font-semibold text-slate-300">Headers</p>
               <KeyValueEditor list={headers} setList={setHeaders} />
             </div>
 
+            {/* Body */}
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <p className="text-[11px] font-semibold text-slate-300">
-                  Body
-                </p>
+                <p className="text-[11px] font-semibold text-slate-300">Body</p>
                 <select
                   className="rounded-md bg-slate-950 border border-slate-700 px-2 py-1 text-[11px] text-slate-100"
                   value={bodyType}
                   onChange={(e) => setBodyType(e.target.value)}
                 >
                   {BODY_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
               </div>
@@ -397,37 +411,23 @@ export default function RequestsPage() {
                 />
               )}
               {bodyType === 'form-data' && (
-                <KeyValueEditor
-                  list={formData}
-                  setList={setFormData}
-                  renderValueInput={renderFormDataValue}
-                />
+                <KeyValueEditor list={formData} setList={setFormData} renderValueInput={renderFormDataValue} />
               )}
               {bodyType === 'x-www-form-urlencoded' && (
-                <KeyValueEditor
-                  list={urlEncodedData}
-                  setList={setUrlEncodedData}
-                />
+                <KeyValueEditor list={urlEncodedData} setList={setUrlEncodedData} />
               )}
-              {bodyType === 'none' && (
-                <p className="text-[11px] text-slate-500 italic">
-                  No body for this request.
-                </p>
-              )}
+              {bodyType === 'none' && <p className="text-[11px] text-slate-500 italic">No body for this request.</p>}
             </div>
 
+            {/* Scripts */}
             <div>
-              <p className="mb-1 text-[11px] font-semibold text-slate-300">
-                Pre-request script
-              </p>
+              <p className="mb-1 text-[11px] font-semibold text-slate-300">Pre-request Script</p>
               <textarea
                 className="h-20 w-full rounded-md bg-slate-950 border border-slate-700 p-2 text-xs font-mono text-slate-100"
                 value={preScript}
                 onChange={(e) => setPreScript(e.target.value)}
               />
-              <p className="mt-2 mb-1 text-[11px] font-semibold text-slate-300">
-                Post-request script / Tests
-              </p>
+              <p className="mt-2 mb-1 text-[11px] font-semibold text-slate-300">Post-request Script / Tests</p>
               <textarea
                 className="h-20 w-full rounded-md bg-slate-950 border border-slate-700 p-2 text-xs font-mono text-slate-100"
                 value={postScript}
@@ -435,6 +435,7 @@ export default function RequestsPage() {
               />
             </div>
 
+            {/* Save */}
             <div className="mt-2 flex items-center gap-2">
               <input
                 className="flex-1 rounded-md bg-slate-950 border border-slate-700 px-2 py-1.5 text-xs text-slate-100"
@@ -446,60 +447,40 @@ export default function RequestsPage() {
                 type="button"
                 onClick={handleSave}
                 className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-slate-50
-                           shadow shadow-indigo-600/40 hover:bg-indigo-500 active:scale-[0.98]
-                           focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+                           shadow shadow-indigo-600/40 hover:bg-indigo-500 active:scale-[0.98]"
               >
                 Save
               </button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg shadow-slate-950/60">
+          {/* Right: Response */}
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/80 p-3 shadow-lg">
             <div>
-              <p className="mb-1 text-sm font-semibold text-slate-100">
-                Response
-              </p>
+              <p className="mb-1 text-sm font-semibold text-slate-100">Response</p>
               {!response ? (
-                <p className="text-[11px] text-slate-500">
-                  Send a request to see the response.
-                </p>
+                <p className="text-[11px] text-slate-500">Send a request to see the response.</p>
               ) : response.error ? (
-                <pre className="whitespace-pre-wrap text-xs text-rose-400">
-                  {response.error}
-                </pre>
+                <pre className="whitespace-pre-wrap text-xs text-rose-400">{response.error}</pre>
               ) : (
                 <>
                   <p className="text-xs">
                     Status:{' '}
-                    <span
-                      className={
-                        response.status >= 200 && response.status < 300
-                          ? 'text-emerald-400'
-                          : 'text-amber-300'
-                      }
-                    >
+                    <span className={response.status >= 200 && response.status < 300 ? 'text-emerald-400' : 'text-amber-300'}>
                       {response.status} {response.statusText}
                     </span>
                   </p>
-                  <p className="text-[11px] text-slate-400">
-                    Time: {responseTime?.toFixed(2)} ms
-                  </p>
+                  <p className="text-[11px] text-slate-400">Time: {responseTime?.toFixed(2)} ms</p>
                   <details className="mt-2 text-xs">
-                    <summary className="cursor-pointer text-slate-200">
-                      Headers
-                    </summary>
+                    <summary className="cursor-pointer text-slate-200">Headers</summary>
                     <pre className="mt-1 max-h-40 overflow-auto rounded bg-slate-950 p-2 text-[11px]">
                       {JSON.stringify(response.headers, null, 2)}
                     </pre>
                   </details>
                   <details className="mt-2 text-xs" open>
-                    <summary className="cursor-pointer text-slate-200">
-                      Body
-                    </summary>
+                    <summary className="cursor-pointer text-slate-200">Body</summary>
                     <pre className="mt-1 max-h-64 overflow-auto rounded bg-slate-950 p-2 text-[11px]">
-                      {response.bodyJson
-                        ? JSON.stringify(response.bodyJson, null, 2)
-                        : response.bodyText}
+                      {response.bodyJson ? JSON.stringify(response.bodyJson, null, 2) : response.bodyText}
                     </pre>
                   </details>
                 </>
@@ -508,17 +489,10 @@ export default function RequestsPage() {
 
             {testResults.length > 0 && (
               <div>
-                <p className="mb-1 text-xs font-semibold text-slate-100">
-                  Tests
-                </p>
+                <p className="mb-1 text-xs font-semibold text-slate-100">Tests</p>
                 <ul className="space-y-0.5 text-[11px]">
                   {testResults.map((t, i) => (
-                    <li
-                      key={i}
-                      className={
-                        t.pass ? 'text-emerald-400' : 'text-rose-400'
-                      }
-                    >
+                    <li key={i} className={t.pass ? 'text-emerald-400' : 'text-rose-400'}>
                       {t.pass ? '✔' : '✖'} {t.message}
                     </li>
                   ))}
